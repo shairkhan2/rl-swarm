@@ -2,7 +2,7 @@ import { TurnkeyClient } from "@turnkey/http";
 import { ApiKeyStamper } from "@turnkey/api-key-stamper";
 import { getLatestApiKey, getUser } from "@/app/db";
 import { NextResponse } from "next/server";
-import contract from "@/app/lib/contract.json"
+import contract from "@/app/lib/contract.json";
 import {
   Address,
   createWalletClient,
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
       );
     }
     const apiKey = getLatestApiKey(body.orgId);
-    if (!apiKey) {
+    if (!apiKey || !apiKey.deferredActionDigest) {
       return NextResponse.json(
         { error: "api key not found" },
         {
@@ -71,10 +71,17 @@ export async function POST(request: Request) {
       apiKey: process.env.NEXT_PUBLIC_ALCHEMY_API_KEY!,
     });
 
+    const walletClient = createWalletClient({
+      account: user.address as `0x${string}`,
+      chain: gensynTestnet,
+      transport,
+    });
+
     const account = await createModularAccountV2({
       transport,
       chain: gensynTestnet,
-      signer: createSignerForUser(user, apiKey),
+      signer: new WalletClientSigner(walletClient, "wallet"),
+      deferredAction: apiKey.deferredActionDigest as `0x${string}`,
     });
 
     const client = createAlchemySmartAccountClient({
@@ -153,12 +160,12 @@ export async function POST(request: Request) {
     // viem docs.
     //
     // See: https://viem.sh/docs/error-handling#error-handling
-    const error = err as SendUserOperationErrorType
+    const error = err as SendUserOperationErrorType;
     if (error.name !== "HttpRequestError") {
       return NextResponse.json(
         {
           error: "An unexpected error occurred",
-          original: error
+          original: error,
         },
         {
           status: 500,
@@ -166,14 +173,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const parsedDetailsResult = httpRequestErroDetailsStringSchema.safeParse(error.details)
+    const parsedDetailsResult = httpRequestErroDetailsStringSchema.safeParse(
+      error.details,
+    );
 
     if (!parsedDetailsResult.success) {
       return NextResponse.json(
         {
           error: "An unexpected error occurred getting request details",
           parseError: parsedDetailsResult.error,
-          original: error.details
+          original: error.details,
         },
         {
           status: 500,
@@ -181,12 +190,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: { data: { revertData } } } = parsedDetailsResult;
+    const {
+      data: {
+        data: { revertData },
+      },
+    } = parsedDetailsResult;
 
     const decodedError = decodeErrorResult({
       data: revertData,
-      abi: contract.abi
-    })
+      abi: contract.abi,
+    });
 
     return NextResponse.json(
       {
@@ -198,78 +211,4 @@ export async function POST(request: Request) {
       },
     );
   }
-}
-
-function createSignerForUser(
-  user: { orgId: string; address: string },
-  apiKey: { publicKey: string; privateKey: string },
-) {
-  const stamper = new ApiKeyStamper({
-    apiPublicKey: apiKey.publicKey,
-    apiPrivateKey: apiKey.privateKey,
-  });
-  const tk = new TurnkeyClient({ baseUrl: TURNKEY_BASE_URL }, stamper);
-
-  const signMessage = async (message: SignableMessage) => {
-    const payload = hashMessage(message);
-
-    // Sign with the api key stamper first.
-    const stampedRequest = await tk.stampSignRawPayload({
-      organizationId: user.orgId,
-      timestampMs: Date.now().toString(),
-      type: "ACTIVITY_TYPE_SIGN_RAW_PAYLOAD_V2",
-      parameters: {
-        signWith: user.address,
-        payload,
-        encoding: "PAYLOAD_ENCODING_HEXADECIMAL",
-        hashFunction: "HASH_FUNCTION_NO_OP",
-      },
-    });
-
-    // Then submit to Alchemy.
-    const alchemyResp = await fetch(
-      `${ALCHEMY_BASE_URL}/signer/v1/sign-payload`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          stampedRequest,
-        }),
-      },
-    );
-    if (!alchemyResp.ok) {
-      console.error(await alchemyResp.text());
-      throw new Error("Alchemy sign request failed");
-    }
-
-    const respJson = (await alchemyResp.json()) as { signature: Hex };
-    return respJson.signature;
-  };
-
-  const signerAccount = toAccount({
-    address: user.address as Address,
-    signMessage: async ({ message }) => {
-      return signMessage(message);
-    },
-    signTransaction: async () => {
-      throw new Error("Not implemented");
-    },
-    signTypedData: async () => {
-      throw new Error("Not implemented");
-    },
-  });
-
-  const walletClient = createWalletClient({
-    account: signerAccount,
-    chain: gensynTestnet,
-    transport: alchemy({
-      apiKey: process.env.NEXT_PUBLIC_ALCHEMY_API_KEY!,
-    }),
-  });
-
-  return new WalletClientSigner(walletClient, "custom");
 }

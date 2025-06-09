@@ -5,6 +5,7 @@ export async function POST(request: Request) {
   const body: {
     orgId: string;
     apiKey: string;
+    deferredActionDigest: string;
   } = await request.json().catch((err) => {
     console.error(err);
     return NextResponse.json(
@@ -14,10 +15,11 @@ export async function POST(request: Request) {
   });
 
   try {
-    setApiKeyActivated(body.orgId, body.apiKey);
+    setApiKeyActivated(body.orgId, body.apiKey, body.deferredActionDigest);
     return NextResponse.json({ activated: true }, { status: 200 });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ json: { error: "error" } }, { status: 500 });
   }
 }
+

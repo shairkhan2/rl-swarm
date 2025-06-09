@@ -1,11 +1,26 @@
 "use client";
 import {
+  alchemy,
+  createAlchemySmartAccountClient,
+  gensynTestnet,
+} from "@account-kit/infra";
+import {
   useAuthModal,
   useLogout,
   useSigner,
   useSignerStatus,
   useUser,
 } from "@account-kit/react";
+import {
+  createModularAccountV2,
+  createModularAccountV2Client,
+} from "@account-kit/smart-contracts";
+import { buildDeferredActionDigest } from "@account-kit/smart-contracts/experimental";
+import {
+  deferralActions,
+  installValidationActions,
+  PermissionBuilder,
+} from "@account-kit/smart-contracts/experimental";
 import { useCallback, useEffect, useState } from "react";
 
 export default function Home() {
@@ -19,7 +34,7 @@ export default function Home() {
   const [sawDisconnected, setSawDisconnected] = useState(false);
   const [sawConnected, setSawConnected] = useState(false);
 
-  // For some reason, the signer status jumps from disconnected to initializing, 
+  // For some reason, the signer status jumps from disconnected to initializing,
   // which makes keeping track of the status here tricky.
   // Record that we ever saw a disconnected or connected status and make decisions on that.
   useEffect(() => {
@@ -49,21 +64,64 @@ export default function Home() {
         body: JSON.stringify({ whoamiStamp }),
       });
 
-      const { publicKey } = await resp.json() || {};
+      const { publicKey } = (await resp.json()) || {};
       if (!publicKey) {
         console.log("No public key");
         return;
       }
 
-      await signer?.inner.experimental_createApiKey({
-        name: `server-signer-${new Date().getTime()}`,
-        publicKey,
-        expirationSec: 60 * 60 * 24 * 62, // 62 days
+      const transport = alchemy({
+        apiKey: process.env.NEXT_PUBLIC_ALCHEMY_API_KEY!,
+      });
+
+      const account = await createModularAccountV2({
+        transport,
+        chain: gensynTestnet,
+        signer,
+      });
+
+      const client = (
+        await createModularAccountV2Client({
+          signer,
+          signerEntity: account.signerEntity,
+          accountAddress: account.address,
+          transport,
+          chain: gensynTestnet,
+        })
+      )
+        .extend(installValidationActions)
+        .extend(deferralActions);
+
+      const { entityId, nonce } = await client.getEntityIdAndNonce({
+        isGlobalValidation: false, // assumes the session key is used to sign the UO
+      });
+
+      const { typedData, fullPreSignatureDeferredActionDigest } =
+        await new PermissionBuilder({
+          client,
+          key: {
+            publicKey,
+            type: "secp256k1",
+          },
+          entityId,
+          nonce,
+        }).compileDeferred();
+
+      const deferredValidationSig =
+        await client.account.signTypedData(typedData);
+
+      const deferredActionDigest = buildDeferredActionDigest({
+        fullPreSignatureDeferredActionDigest,
+        sig: deferredValidationSig,
       });
 
       await fetch("/api/set-api-key-activated", {
         method: "POST",
-        body: JSON.stringify({ orgId: user.orgId, apiKey: publicKey }),
+        body: JSON.stringify({
+          orgId: user.orgId,
+          apiKey: publicKey,
+          deferredActionDigest,
+        }),
       });
 
       setCreatedApiKey(true);
@@ -78,7 +136,6 @@ export default function Home() {
       handleAll();
     }
   }, [handleAll, sawConnected]);
-
 
   // Show alert if crypto.subtle isn't available.
   useEffect(() => {
