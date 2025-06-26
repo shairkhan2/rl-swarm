@@ -253,7 +253,7 @@ echo -en $RESET_TEXT
 
 # Only export MODEL_NAME if user provided a non-empty value
 if [ -n "$MODEL_NAME" ]; then
-   model_name="default_model"
+  
     echo_green ">> Using model: $MODEL_NAME"
 else
     echo_green ">> Using default model from config"
