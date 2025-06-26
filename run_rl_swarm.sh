@@ -251,9 +251,14 @@ echo -en $GREEN_TEXT
  MODEL_NAME
 echo -en $RESET_TEXT
 
-# Only export MODEL_NAME if user provided a non-empty value
+MODEL_NAME=""
+
+echo -en $GREEN_TEXT
+echo ">> Enter the name of the model you want to use in huggingface repo/name format, or press [Enter] to use the default model."
+echo -en $RESET_TEXT
+
 if [ -n "$MODEL_NAME" ]; then
-  
+    export MODEL_NAME
     echo_green ">> Using model: $MODEL_NAME"
 else
     echo_green ">> Using default model from config"
