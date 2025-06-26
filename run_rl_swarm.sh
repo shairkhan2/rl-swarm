@@ -247,10 +247,6 @@ else
     esac
 fi
 
-echo -en $GREEN_TEXT
- MODEL_NAME
-echo -en $RESET_TEXT
-
 MODEL_NAME=""
 
 echo -en $GREEN_TEXT
