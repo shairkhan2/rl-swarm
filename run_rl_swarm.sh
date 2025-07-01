@@ -6,7 +6,7 @@ set -euo pipefail
 ROOT=$PWD
 
 # GenRL Swarm version to use
-GENRL_TAG="v0.1.1"
+GENRL_SWARM_TAG="v0.1.1"
 
 export IDENTITY_PATH
 export GENSYN_RESET_CONFIG
@@ -193,30 +193,50 @@ fi
 echo_green ">> Getting requirements..."
 pip install --upgrade pip
 
-# echo_green ">> Installing GenRL..."
-pip install gensyn-genrl==0.1.4
-pip install reasoning-gym>=0.1.20 # for reasoning gym env
-pip install trl # for grpo config, will be deprecated soon
-pip install hivemind@git+https://github.com/learning-at-home/hivemind@4d5c41495be082490ea44cce4e9dd58f9926bb4e # We need the latest, 1.1.11 is broken
+# Clone GenRL repository to user's working directory
+echo_green ">> Initializing and updating GenRL..."
+if [ ! -d "$ROOT/genrl-swarm" ]; then
+    git clone --depth=1 --branch "$GENRL_SWARM_TAG" https://github.com/gensyn-ai/genrl-swarm.git "$ROOT/genrl-swarm"
+else
+    # Check if we are on the correct tag
+    cd "$ROOT/genrl-swarm"
+    CURRENT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "unknown")
+    if [ "$CURRENT_TAG" != "$GENRL_SWARM_TAG" ]; then
+        echo_green ">> Updating genrl-swarm to tag $GENRL_SWARM_TAG..."
+        git fetch --tags
+        git checkout "$GENRL_SWARM_TAG"
+        git pull origin "$GENRL_SWARM_TAG"
+    fi
+    cd "$ROOT"
+fi
 
+echo_green ">> Installing GenRL."
+if [ -d "$ROOT/genrl-swarm" ]; then
+    cd "$ROOT/genrl-swarm"
+    pip install -e .[examples]
+    cd "$ROOT" 
+else
+    echo_red "Error: genrl-swarm submodule not found at $ROOT/genrl-swarm"
+    exit 1
+fi
 
 if [ ! -d "$ROOT/configs" ]; then
     mkdir "$ROOT/configs"
 fi  
 if [ -f "$ROOT/configs/rg-swarm.yaml" ]; then
     # Use cmp -s for a silent comparison. If different, backup and copy.
-    if ! cmp -s "$ROOT/rgym_exp/config/rg-swarm.yaml" "$ROOT/configs/rg-swarm.yaml"; then
+    if ! cmp -s "$ROOT/genrl-swarm/recipes/rgym/rg-swarm.yaml" "$ROOT/configs/rg-swarm.yaml"; then
         if [ -z "$GENSYN_RESET_CONFIG" ]; then
             echo_green ">> Found differences in rg-swarm.yaml. If you would like to reset to the default, set GENSYN_RESET_CONFIG to a non-empty value."
         else
             echo_green ">> Found differences in rg-swarm.yaml. Backing up existing config."
             mv "$ROOT/configs/rg-swarm.yaml" "$ROOT/configs/rg-swarm.yaml.bak"
-            cp "$ROOT/rgym_exp/config/rg-swarm.yaml" "$ROOT/configs/rg-swarm.yaml"
+            cp "$ROOT/genrl-swarm/recipes/rgym/rg-swarm.yaml" "$ROOT/configs/rg-swarm.yaml"
         fi
     fi
 else
     # If the config doesn't exist, just copy it.
-    cp "$ROOT/rgym_exp/config/rg-swarm.yaml" "$ROOT/configs/rg-swarm.yaml"
+    cp "$ROOT/genrl-swarm/recipes/rgym/rg-swarm.yaml" "$ROOT/configs/rg-swarm.yaml"
 fi
 
 if [ -n "$DOCKER" ]; then
@@ -231,7 +251,7 @@ if [ -n "${HF_TOKEN}" ]; then # Check if HF_TOKEN is already set and use if so. 
     HUGGINGFACE_ACCESS_TOKEN=${HF_TOKEN}
 else
     echo -en $GREEN_TEXT
-    read -p ">> Would you like to push models you train in the RL swarm to the Hugging Face Hub? [y/N] " yn
+    echo ">> Would you like to push models you train in the RL swarm to the Hugging Face Hub? [y/N] n (auto-selected)"; yn="n"
     echo -en $RESET_TEXT
     yn=${yn:-N} # Default to "N" if the user presses Enter
     case $yn in
@@ -241,11 +261,12 @@ else
     esac
 fi
 
+MODEL_NAME=""
+
 echo -en $GREEN_TEXT
-read -p ">> Enter the name of the model you want to use in huggingface repo/name format, or press [Enter] to use the default model. " MODEL_NAME
+echo ">> Enter the name of the model you want to use in huggingface repo/name format, or press [Enter] to use the default model."
 echo -en $RESET_TEXT
 
-# Only export MODEL_NAME if user provided a non-empty value
 if [ -n "$MODEL_NAME" ]; then
     export MODEL_NAME
     echo_green ">> Using model: $MODEL_NAME"
@@ -256,8 +277,8 @@ fi
 echo_green ">> Good luck in the swarm!"
 echo_blue ">> And remember to star the repo on GitHub! --> https://github.com/gensyn-ai/rl-swarm"
 
-python -m rgym_exp.runner.swarm_launcher \
-    --config-path "$ROOT/rgym_exp/config" \
+python "$ROOT/genrl-swarm/src/genrl_swarm/runner/swarm_launcher.py" \
+    --config-path "$ROOT/configs" \
     --config-name "rg-swarm.yaml" 
 
 wait  # Keep script running until Ctrl+C
