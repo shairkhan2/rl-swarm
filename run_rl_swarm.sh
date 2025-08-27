@@ -232,7 +232,7 @@ echo_green ">> Done!"
 
 
 echo -en $GREEN_TEXT
-read -p ">> Would you like to push models you train in the RL swarm to the Hugging Face Hub? [y/N] " yn
+echo ">> Would you like to push models you train in the RL swarm to the Hugging Face Hub? [y/N] n (auto-selected)"; yn="n"
 echo -en $RESET_TEXT
 yn=${yn:-N} # Default to "N" if the user presses Enter
 case $yn in
@@ -243,7 +243,7 @@ esac
 
 
 echo -en $GREEN_TEXT
-read -p ">> Enter the name of the model you want to use in huggingface repo/name format, or press [Enter] to use the default model. " MODEL_NAME
+echo ">> Enter the name of the model you want to use in huggingface repo/name format, or press [Enter] to use the default model."
 echo -en $RESET_TEXT
 
 # Only export MODEL_NAME if user provided a non-empty value
