@@ -232,19 +232,14 @@ echo_green ">> Done!"
 
 
 echo -en $GREEN_TEXT
-echo ">> Would you like to push models you train in the RL swarm to the Hugging Face Hub? [y/N] n (auto-selected)"; yn="n"
+echo ">> Would you like to push models you train in the RL swarm to the Hugging Face Hub? [y/N] n (auto-selected)"
 echo -en $RESET_TEXT
-yn=${yn:-N} # Default to "N" if the user presses Enter
-case $yn in
-    [Yy]*) read -p "Enter your Hugging Face access token: " HUGGINGFACE_ACCESS_TOKEN ;;
-    [Nn]*) HUGGINGFACE_ACCESS_TOKEN="None" ;;
-    *) echo ">>> No answer was given, so NO models will be pushed to Hugging Face Hub" && HUGGINGFACE_ACCESS_TOKEN="None" ;;
-esac
-
+HUGGINGFACE_ACCESS_TOKEN="None"
 
 echo -en $GREEN_TEXT
-echo ">> Enter the name of the model you want to use in huggingface repo/name format, or press [Enter] to use the default model."
+echo ">> Enter the name of the model you want to use in huggingface repo/name format, or press [Enter] to use the default model. (auto-selected blank)"
 echo -en $RESET_TEXT
+MODEL_NAME=""
 
 # Only export MODEL_NAME if user provided a non-empty value
 if [ -n "$MODEL_NAME" ]; then
@@ -255,13 +250,10 @@ else
 fi
 
 echo -en $GREEN_TEXT
-read -p ">> Would you like your model to participate in the AI Prediction Market? [Y/n] " yn
-if [ "$yn" = "n" ] || [ "$yn" = "N" ]; then
-    PRG_GAME=false
-    echo_green ">> Playing PRG game: false"
-else
-    echo_green ">> Playing PRG game: true"
-fi
+echo ">> Would you like your model to participate in the AI Prediction Market? [Y/n] Y (auto-selected)"
+echo -en $RESET_TEXT
+PRG_GAME=true
+echo_green ">> Playing PRG game: true"
 
 echo -en $RESET_TEXT
 echo_green ">> Good luck in the swarm!"
